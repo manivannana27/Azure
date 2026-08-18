@@ -74,6 +74,16 @@ def enum_value(value: Any) -> str:
     return str(getattr(value, "value", value))
 
 
+def model_attr(obj: Any, *names: str, default: Any = "") -> Any:
+    """Read the first present SDK attribute. Models differ slightly by API version."""
+    for name in names:
+        if hasattr(obj, name):
+            value = getattr(obj, name)
+            if value is not None:
+                return value
+    return default
+
+
 def iso_dt(value: Any) -> str:
     if value is None:
         return ""
@@ -522,7 +532,7 @@ class AvdInventoryCollector:
             "CustomRdpProperty": host_pool.custom_rdp_property or "",
             "VMTemplate": host_pool.vm_template or "",
             "Ring": host_pool.ring if host_pool.ring is not None else "",
-            "HostPoolKind": enum_value(host_pool.host_pool_kind) if getattr(host_pool, "host_pool_kind", None) else "",
+            "HostPoolKind": enum_value(model_attr(host_pool, "kind", "host_pool_kind", default="")),
             "PublicNetworkAccess": enum_value(getattr(host_pool, "public_network_access", None)),
             "AgentUpdateType": enum_value(getattr(agent_update, "type", None)) if agent_update else "",
             "AgentUseSessionHostLocalTime": getattr(agent_update, "use_session_host_local_time", "") if agent_update else "",
@@ -618,8 +628,8 @@ class AvdInventoryCollector:
                             "FilePath": "",
                             "CommandLineSetting": "",
                             "CommandLineArguments": "",
-                            "ShowInPortal": desktop.show_in_portal if desktop.show_in_portal is not None else "",
-                            "IconPath": desktop.icon_path or "",
+                            "ShowInPortal": model_attr(desktop, "show_in_portal", "show_in_feed"),
+                            "IconPath": model_attr(desktop, "icon_path"),
                         }
                     )
             published = list(self.avd.applications.list(resource_group, app_group.name))
@@ -628,15 +638,16 @@ class AvdInventoryCollector:
                     {
                         "ApplicationName": application.name or "",
                         "ApplicationFriendlyName": application.friendly_name or application.name or "",
-                        "ApplicationType": enum_value(getattr(application, "application_type", None)) or "RemoteApp",
-                        "FilePath": application.file_path or "",
-                        "CommandLineSetting": enum_value(application.command_line_setting),
-                        "CommandLineArguments": application.command_line_arguments or "",
-                        "ShowInPortal": application.show_in_portal if application.show_in_portal is not None else "",
-                        "IconPath": application.icon_path or "",
+                        "ApplicationType": enum_value(model_attr(application, "application_type", default=None))
+                        or "RemoteApp",
+                        "FilePath": model_attr(application, "file_path"),
+                        "CommandLineSetting": enum_value(model_attr(application, "command_line_setting", default=None)),
+                        "CommandLineArguments": model_attr(application, "command_line_arguments"),
+                        "ShowInPortal": model_attr(application, "show_in_portal"),
+                        "IconPath": model_attr(application, "icon_path"),
                     }
                 )
-        except HttpResponseError as exc:
+        except (HttpResponseError, AttributeError) as exc:
             LOGGER.warning("Unable to list applications for %s: %s", app_group.name, exc)
         return apps
 
@@ -995,6 +1006,9 @@ def main(argv: list[str] | None = None) -> int:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
     )
+    if not args.verbose:
+        logging.getLogger("azure").setLevel(logging.WARNING)
+        logging.getLogger("azure.identity").setLevel(logging.WARNING)
 
     credential = get_credential(args.auth, args.tenant_id)
     collector = AvdInventoryCollector(
