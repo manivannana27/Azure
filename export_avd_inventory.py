@@ -1010,6 +1010,8 @@ def main(argv: list[str] | None = None) -> int:
         logging.getLogger("azure").setLevel(logging.WARNING)
         logging.getLogger("azure.identity").setLevel(logging.WARNING)
 
+    LOGGER.info("AVD inventory exporter %s (%s)", SCRIPT_VERSION, __file__)
+
     credential = get_credential(args.auth, args.tenant_id)
     collector = AvdInventoryCollector(
         credential,
