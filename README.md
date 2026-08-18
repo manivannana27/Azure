@@ -27,10 +27,12 @@ Application-group access is read from Azure RBAC on the application group (typic
 ```bash
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 az login
 az account set --subscription "<subscription-id>"
 ```
+
+Use `python -m pip` (not a bare `pip`) so packages install into the same interpreter that runs the script. If you see `ModuleNotFoundError: azure.mgmt.authorization` (or `azure`, `openpyxl`), run that install command again with the same `python` you use to launch `export_avd_inventory.py`.
 
 ### Run
 

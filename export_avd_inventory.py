@@ -30,20 +30,31 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
-import requests
-from azure.core.exceptions import HttpResponseError
-from azure.identity import (
-    AzureCliCredential,
-    DefaultAzureCredential,
-    DeviceCodeCredential,
-    InteractiveBrowserCredential,
-)
-from azure.mgmt.authorization import AuthorizationManagementClient
-from azure.mgmt.desktopvirtualization import DesktopVirtualizationMgmtClient
-from openpyxl import Workbook
-from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-from openpyxl.utils import get_column_letter
-from openpyxl.worksheet.worksheet import Worksheet
+try:
+    import requests
+    from azure.core.exceptions import HttpResponseError
+    from azure.identity import (
+        AzureCliCredential,
+        DefaultAzureCredential,
+        DeviceCodeCredential,
+        InteractiveBrowserCredential,
+    )
+    from azure.mgmt.authorization import AuthorizationManagementClient
+    from azure.mgmt.desktopvirtualization import DesktopVirtualizationMgmtClient
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.worksheet import Worksheet
+except ModuleNotFoundError as exc:
+    missing = getattr(exc, "name", None) or str(exc)
+    print(
+        f"Missing Python package: {missing}\n"
+        "Install dependencies into THIS same Python interpreter:\n"
+        f"  {sys.executable} -m pip install -r requirements.txt\n"
+        "If you use a venv, activate it first, then run the script with that venv's python.",
+        file=sys.stderr,
+    )
+    raise SystemExit(1) from exc
 
 LOGGER = logging.getLogger("avd_inventory")
 
