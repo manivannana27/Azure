@@ -57,7 +57,7 @@ except ModuleNotFoundError as exc:
     raise SystemExit(1) from exc
 
 LOGGER = logging.getLogger("avd_inventory")
-SCRIPT_VERSION = "2026.08.18-3"
+SCRIPT_VERSION = "2026.08.18-4"
 
 HOST_POOL_ID_RE = re.compile(
     r"/subscriptions/[^/]+/resourcegroups/([^/]+)/providers/"
@@ -116,6 +116,13 @@ def join_unique(values: Iterable[Any]) -> str:
         if text and text not in seen:
             seen.append(text)
     return "; ".join(seen)
+
+
+def short_session_host_name(name: str | None) -> str:
+    """Azure returns session hosts as hostPoolName/sessionHostName; keep only the host."""
+    if not name:
+        return ""
+    return str(name).replace("\\", "/").rstrip("/").split("/")[-1]
 
 
 def get_credential(auth_mode: str, tenant_id: str | None):
@@ -494,7 +501,6 @@ class AvdInventoryCollector:
 
         summary_rows = [
             {"Metric": "SubscriptionId", "Value": self.subscription_id},
-            {"Metric": "CollectedAtUtc", "Value": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")},
             {"Metric": "HostPools", "Value": len(host_pool_rows)},
             {"Metric": "SessionHosts", "Value": len(session_host_rows)},
             {"Metric": "ApplicationGroups", "Value": len(app_group_rows)},
@@ -551,7 +557,7 @@ class AvdInventoryCollector:
         return {
             "HostPoolName": host_pool.name or "",
             "HostPoolType": enum_value(host_pool.host_pool_type),
-            "SessionHostName": session_host.name or "",
+            "SessionHostName": short_session_host_name(session_host.name),
             "SessionHostStatus": enum_value(session_host.status),
             "SessionHostAllowNewSession": session_host.allow_new_session,
             "Sessions": session_host.sessions if session_host.sessions is not None else "",
