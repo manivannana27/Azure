@@ -57,6 +57,7 @@ except ModuleNotFoundError as exc:
     raise SystemExit(1) from exc
 
 LOGGER = logging.getLogger("avd_inventory")
+SCRIPT_VERSION = "2026.08.18-3"
 
 HOST_POOL_ID_RE = re.compile(
     r"/subscriptions/[^/]+/resourcegroups/([^/]+)/providers/"
@@ -1010,7 +1011,11 @@ def main(argv: list[str] | None = None) -> int:
         logging.getLogger("azure").setLevel(logging.WARNING)
         logging.getLogger("azure.identity").setLevel(logging.WARNING)
 
-    LOGGER.info("AVD inventory exporter %s (%s)", SCRIPT_VERSION, __file__)
+    LOGGER.info(
+        "AVD inventory exporter %s (%s)",
+        globals().get("SCRIPT_VERSION", "unknown"),
+        __file__,
+    )
 
     credential = get_credential(args.auth, args.tenant_id)
     collector = AvdInventoryCollector(
