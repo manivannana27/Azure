@@ -98,7 +98,7 @@ def test_load_excel_rows(tmp_path: Path):
     path = tmp_path / "servers.xlsx"
     wb = Workbook()
     ws = wb.active
-    ws.append(["Server", "Component", "Time"])
+    ws.append(["Server", "Roles", "Reboot"])
     ws.append(["server1", "cs", 12])
     ws.append(["server2", "uag", "12:10"])
     wb.save(path)

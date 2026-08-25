@@ -4,8 +4,8 @@ Reboot UAG VMs listed in Excel across three vCenters on a timed schedule.
 
 Excel columns (header names are matched case-insensitively):
   - Server / VM / Name / Hostname  -> VM name in vCenter
-  - Component / Role / Type        -> e.g. CS, UAG  (only UAG is rebooted)
-  - Time / Schedule / RebootTime   -> 12, 12:10, or an Excel time
+  - Roles                          -> e.g. CS, UAG  (only UAG is rebooted)
+  - Reboot                         -> 12, 12:10, or an Excel time
   - vCenter (optional)             -> hostname/IP if the VM should be looked up
                                      on a specific vCenter only
 
@@ -67,8 +67,8 @@ except ImportError:  # pragma: no cover
 
 
 SERVER_HEADERS = ("server", "vm", "vmname", "name", "hostname", "servername", "server name")
-COMPONENT_HEADERS = ("component", "role", "type", "comp")
-TIME_HEADERS = ("time", "schedule", "reboottime", "reboot time", "starttime")
+COMPONENT_HEADERS = ("roles", "role", "component", "type", "comp")
+TIME_HEADERS = ("reboot", "reboottime", "reboot time", "time", "schedule", "starttime")
 VCENTER_HEADERS = ("vcenter", "vc", "vcentername")
 
 LOG = logging.getLogger("reboot_uag")
@@ -249,7 +249,7 @@ def load_excel_rows(excel_path: Path) -> list[dict[str, Any]]:
     vcenter_i = _header_index(headers, VCENTER_HEADERS)
     if server_i is None or component_i is None or time_i is None:
         raise ValueError(
-            "Excel must have Server, Component, and Time columns. "
+            "Excel must have Server, Roles, and Reboot columns. "
             f"Found headers: {rows[0]!r}"
         )
     records: list[dict[str, Any]] = []
