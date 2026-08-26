@@ -62,7 +62,7 @@ except ModuleNotFoundError:
     ComputeManagementClient = None  # type: ignore[misc, assignment]
 
 LOGGER = logging.getLogger("avd_inventory")
-SCRIPT_VERSION = "2026.08.26-1"
+SCRIPT_VERSION = "2026.08.26-2"
 
 HOST_POOL_ID_RE = re.compile(
     r"/subscriptions/[^/]+/resourcegroups/([^/]+)/providers/"
@@ -137,6 +137,86 @@ def short_session_host_name(name: str | None) -> str:
     if not name:
         return ""
     return str(name).replace("\\", "/").rstrip("/").split("/")[-1]
+
+
+# NT build 10.0.<build>.<revision> → Windows 10 / 11 / Server. 26200 = Windows 11 25H2.
+_WINDOWS_CLIENT_RELEASES = {
+    10240: ("Windows 10", "1507"),
+    10586: ("Windows 10", "1511"),
+    14393: ("Windows 10", "1607"),
+    15063: ("Windows 10", "1703"),
+    16299: ("Windows 10", "1709"),
+    17134: ("Windows 10", "1803"),
+    17763: ("Windows 10", "1809"),
+    18362: ("Windows 10", "1903"),
+    18363: ("Windows 10", "1909"),
+    19041: ("Windows 10", "2004"),
+    19042: ("Windows 10", "20H2"),
+    19043: ("Windows 10", "21H1"),
+    19044: ("Windows 10", "21H2"),
+    19045: ("Windows 10", "22H2"),
+    22000: ("Windows 11", "21H2"),
+    22621: ("Windows 11", "22H2"),
+    22631: ("Windows 11", "23H2"),
+    26100: ("Windows 11", "24H2"),
+    26200: ("Windows 11", "25H2"),
+}
+_WINDOWS_SERVER_BY_BUILD = {
+    14393: "Windows Server 2016",
+    17763: "Windows Server 2019",
+    20348: "Windows Server 2022",
+    25398: "Windows Server 23H2",
+    26100: "Windows Server 2025",
+}
+
+
+def parse_windows_nt_build(os_version: str | None) -> int | None:
+    """Parse 10.0.26200.8457 (or 26200.8457) into the Windows build number."""
+    digits = [int(part) for part in re.findall(r"\d+", os_version or "")]
+    if len(digits) >= 3 and digits[0] == 10 and digits[1] == 0 and digits[2] >= 10240:
+        return digits[2]
+    if digits and digits[0] >= 10240:
+        return digits[0]
+    return None
+
+
+def friendly_windows_os(os_name: str | None, os_version: str | None) -> tuple[str, str]:
+    """Return (Windows 10/11/Server family, release such as 25H2)."""
+    name = (os_name or "").strip()
+    name_lower = name.lower()
+    build = parse_windows_nt_build(os_version)
+    looks_server = "server" in name_lower
+
+    if looks_server:
+        if build and build in _WINDOWS_SERVER_BY_BUILD:
+            return _WINDOWS_SERVER_BY_BUILD[build], ""
+        server_match = re.search(r"windows server(?:\s+(\d{4}|23h2))?", name_lower, re.I)
+        if server_match and server_match.group(1):
+            token = server_match.group(1)
+            label = "Windows Server 23H2" if token.lower() == "23h2" else f"Windows Server {token}"
+            return label, ""
+        return "Windows Server", ""
+
+    if "windows 11" in name_lower:
+        family, release = "Windows 11", ""
+        if build and build in _WINDOWS_CLIENT_RELEASES:
+            family, release = _WINDOWS_CLIENT_RELEASES[build]
+        return family, release
+    if "windows 10" in name_lower:
+        family, release = "Windows 10", ""
+        if build and build in _WINDOWS_CLIENT_RELEASES:
+            family, release = _WINDOWS_CLIENT_RELEASES[build]
+        return family, release
+
+    if build in _WINDOWS_CLIENT_RELEASES:
+        return _WINDOWS_CLIENT_RELEASES[build]
+    if build in _WINDOWS_SERVER_BY_BUILD:
+        return _WINDOWS_SERVER_BY_BUILD[build], ""
+    if build is not None and build >= 22000:
+        return "Windows 11", ""
+    if build is not None and build >= 10240:
+        return "Windows 10", ""
+    return "", ""
 
 
 def get_credential(auth_mode: str, tenant_id: str | None):
@@ -334,6 +414,8 @@ class AvdInventoryCollector:
                         "AgentVersion": "",
                         "OSName": "",
                         "OSVersion": "",
+                        "OSFamily": "",
+                        "OSRelease": "",
                         "OSType": "",
                         "SxSStackVersion": "",
                         "SessionHostResourceId": "",
@@ -581,6 +663,8 @@ class AvdInventoryCollector:
             "SessionHostName": short_session_host_name(session_host.name),
             "OSName": os_info["OSName"],
             "OSVersion": os_info["OSVersion"],
+            "OSFamily": os_info["OSFamily"],
+            "OSRelease": os_info["OSRelease"],
             "OSType": os_info["OSType"],
             "SessionHostStatus": enum_value(session_host.status),
             "SessionHostAllowNewSession": session_host.allow_new_session,
@@ -597,9 +681,18 @@ class AvdInventoryCollector:
     def _session_host_os(self, session_host) -> dict[str, str]:
         avd_version = model_attr(session_host, "os_version")
         vm_info = self._vm_os_info(model_attr(session_host, "resource_id"))
+        os_version = vm_info.get("os_version") or ""
+        if parse_windows_nt_build(os_version) is None and parse_windows_nt_build(avd_version):
+            os_version = avd_version
+        elif not os_version:
+            os_version = avd_version or ""
+        os_name = vm_info.get("os_name") or ""
+        family, release = friendly_windows_os(os_name, os_version)
         return {
-            "OSName": vm_info.get("os_name") or "",
-            "OSVersion": vm_info.get("os_version") or avd_version or "",
+            "OSName": os_name or (f"{family} {release}".strip() if family else ""),
+            "OSVersion": os_version,
+            "OSFamily": family,
+            "OSRelease": release,
             "OSType": vm_info.get("os_type") or "",
         }
 
@@ -905,6 +998,8 @@ SHEET_COLUMNS = {
         "SessionHostName",
         "OSName",
         "OSVersion",
+        "OSFamily",
+        "OSRelease",
         "OSType",
         "SessionHostStatus",
         "SessionHostAllowNewSession",
@@ -966,6 +1061,8 @@ SHEET_COLUMNS = {
         "SessionHostName",
         "OSName",
         "OSVersion",
+        "OSFamily",
+        "OSRelease",
         "OSType",
         "SessionHostStatus",
         "SessionHostAllowNewSession",

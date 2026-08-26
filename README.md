@@ -10,10 +10,10 @@ Python script that signs in to **one Azure subscription**, inventories every Azu
 
 | Sheet | Contents |
 | --- | --- |
-| **HostPools_SessionHosts** | Host pool details, type (Pooled/Personal), session hosts, and OS name/version/type |
+| **HostPools_SessionHosts** | Host pool details, type, session hosts, OS build, and Windows 10/11 (or Server) family |
 | **AppGroups_Access** | Host pool, type, application groups, published applications/desktops, and who is assigned access |
 | HostPools | One row per host pool |
-| SessionHosts | One row per session host, including OS name, version, and type |
+| SessionHosts | One row per session host, including OS build mapped to Windows 10 / Windows 11 / Server |
 | ApplicationGroups | Application groups with assignment and application summaries |
 | Assignments | Role assignments on each application group (users, groups, service principals) |
 | Applications | Published RemoteApps / session desktops and the principals that have access |
