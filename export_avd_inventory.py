@@ -56,8 +56,13 @@ except ModuleNotFoundError as exc:
     )
     raise SystemExit(1) from exc
 
+try:
+    from azure.mgmt.compute import ComputeManagementClient
+except ModuleNotFoundError:
+    ComputeManagementClient = None  # type: ignore[misc, assignment]
+
 LOGGER = logging.getLogger("avd_inventory")
-SCRIPT_VERSION = "2026.08.18-4"
+SCRIPT_VERSION = "2026.08.26-1"
 
 HOST_POOL_ID_RE = re.compile(
     r"/subscriptions/[^/]+/resourcegroups/([^/]+)/providers/"
@@ -65,6 +70,15 @@ HOST_POOL_ID_RE = re.compile(
     re.IGNORECASE,
 )
 RESOURCE_GROUP_RE = re.compile(r"/resourcegroups/([^/]+)/", re.IGNORECASE)
+COMPUTE_VM_RE = re.compile(
+    r"/resourcegroups/([^/]+)/providers/microsoft\.compute/virtualmachines/([^/]+)$",
+    re.IGNORECASE,
+)
+COMPUTE_VMSS_RE = re.compile(
+    r"/resourcegroups/([^/]+)/providers/microsoft\.compute/"
+    r"virtualmachinescalesets/([^/]+)/virtualmachines/([^/]+)$",
+    re.IGNORECASE,
+)
 
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 
@@ -256,6 +270,10 @@ class AvdInventoryCollector:
         self.auth = AuthorizationManagementClient(credential, subscription_id)
         self.graph = GraphDirectory(credential)
         self._role_name_cache: dict[str, str] = {}
+        self._os_cache: dict[str, dict[str, str]] = {}
+        self.compute = None
+        if ComputeManagementClient is not None:
+            self.compute = ComputeManagementClient(credential, subscription_id)
 
     def collect(self) -> dict[str, list[dict[str, Any]]]:
         LOGGER.info("Listing host pools in subscription %s", self.subscription_id)
@@ -314,7 +332,9 @@ class AvdInventoryCollector:
                         "AssignedUser": "",
                         "LastHeartBeat": "",
                         "AgentVersion": "",
+                        "OSName": "",
                         "OSVersion": "",
+                        "OSType": "",
                         "SxSStackVersion": "",
                         "SessionHostResourceId": "",
                         "UpdateState": "",
@@ -554,22 +574,80 @@ class AvdInventoryCollector:
             if principal and principal.get("display_name"):
                 assigned_user = f"{principal['display_name']} ({principal.get('user_principal_name') or assigned_user})"
 
+        os_info = self._session_host_os(session_host)
         return {
             "HostPoolName": host_pool.name or "",
             "HostPoolType": enum_value(host_pool.host_pool_type),
             "SessionHostName": short_session_host_name(session_host.name),
+            "OSName": os_info["OSName"],
+            "OSVersion": os_info["OSVersion"],
+            "OSType": os_info["OSType"],
             "SessionHostStatus": enum_value(session_host.status),
             "SessionHostAllowNewSession": session_host.allow_new_session,
             "Sessions": session_host.sessions if session_host.sessions is not None else "",
             "AssignedUser": assigned_user,
             "LastHeartBeat": iso_dt(session_host.last_heart_beat),
             "AgentVersion": session_host.agent_version or "",
-            "OSVersion": session_host.os_version or "",
             "SxSStackVersion": session_host.sx_s_stack_version or "",
             "SessionHostResourceId": session_host.resource_id or "",
             "UpdateState": enum_value(session_host.update_state),
             "UpdateErrorMessage": session_host.update_error_message or "",
         }
+
+    def _session_host_os(self, session_host) -> dict[str, str]:
+        avd_version = model_attr(session_host, "os_version")
+        vm_info = self._vm_os_info(model_attr(session_host, "resource_id"))
+        return {
+            "OSName": vm_info.get("os_name") or "",
+            "OSVersion": vm_info.get("os_version") or avd_version or "",
+            "OSType": vm_info.get("os_type") or "",
+        }
+
+    def _vm_os_info(self, resource_id: str) -> dict[str, str]:
+        empty = {"os_name": "", "os_version": "", "os_type": ""}
+        if not resource_id or self.compute is None:
+            return empty
+        cache_key = resource_id.rstrip("/").lower()
+        if cache_key in self._os_cache:
+            return self._os_cache[cache_key]
+
+        info = dict(empty)
+        try:
+            vmss_match = COMPUTE_VMSS_RE.search(resource_id)
+            vm_match = COMPUTE_VM_RE.search(resource_id)
+            resource = None
+            if vmss_match:
+                resource = self.compute.virtual_machine_scale_set_vms.get(
+                    vmss_match.group(1),
+                    vmss_match.group(2),
+                    vmss_match.group(3),
+                    expand="instanceView",
+                )
+            elif vm_match:
+                resource = self.compute.virtual_machines.get(
+                    vm_match.group(1),
+                    vm_match.group(2),
+                    expand="instanceView",
+                )
+            if resource is not None:
+                instance_view = getattr(resource, "instance_view", None)
+                info["os_name"] = model_attr(instance_view, "os_name") if instance_view else ""
+                info["os_version"] = model_attr(instance_view, "os_version") if instance_view else ""
+                storage = getattr(resource, "storage_profile", None)
+                os_disk = getattr(storage, "os_disk", None) if storage else None
+                info["os_type"] = enum_value(model_attr(os_disk, "os_type", default=None)) if os_disk else ""
+                image = getattr(storage, "image_reference", None) if storage else None
+                if not info["os_name"] and image:
+                    offer = model_attr(image, "offer")
+                    sku = model_attr(image, "sku")
+                    info["os_name"] = " ".join(part for part in (offer, sku) if part)
+                if not info["os_version"] and image:
+                    info["os_version"] = model_attr(image, "exact_version") or model_attr(image, "version")
+        except HttpResponseError as exc:
+            LOGGER.debug("Unable to read VM OS for %s: %s", resource_id, exc)
+
+        self._os_cache[cache_key] = info
+        return info
 
     def _app_group_row(
         self,
@@ -825,13 +903,15 @@ SHEET_COLUMNS = {
         "SessionHostCount",
         "ApplicationGroupCount",
         "SessionHostName",
+        "OSName",
+        "OSVersion",
+        "OSType",
         "SessionHostStatus",
         "SessionHostAllowNewSession",
         "Sessions",
         "AssignedUser",
         "LastHeartBeat",
         "AgentVersion",
-        "OSVersion",
         "SxSStackVersion",
         "SessionHostResourceId",
         "UpdateState",
@@ -884,13 +964,15 @@ SHEET_COLUMNS = {
         "HostPoolName",
         "HostPoolType",
         "SessionHostName",
+        "OSName",
+        "OSVersion",
+        "OSType",
         "SessionHostStatus",
         "SessionHostAllowNewSession",
         "Sessions",
         "AssignedUser",
         "LastHeartBeat",
         "AgentVersion",
-        "OSVersion",
         "SxSStackVersion",
         "UpdateState",
         "UpdateErrorMessage",

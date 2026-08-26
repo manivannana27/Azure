@@ -10,10 +10,10 @@ Python script that signs in to **one Azure subscription**, inventories every Azu
 
 | Sheet | Contents |
 | --- | --- |
-| **HostPools_SessionHosts** | Host pool details, type (Pooled/Personal), and every associated session host |
+| **HostPools_SessionHosts** | Host pool details, type (Pooled/Personal), session hosts, and OS name/version/type |
 | **AppGroups_Access** | Host pool, type, application groups, published applications/desktops, and who is assigned access |
 | HostPools | One row per host pool |
-| SessionHosts | One row per session host |
+| SessionHosts | One row per session host, including OS name, version, and type |
 | ApplicationGroups | Application groups with assignment and application summaries |
 | Assignments | Role assignments on each application group (users, groups, service principals) |
 | Applications | Published RemoteApps / session desktops and the principals that have access |
@@ -69,4 +69,5 @@ python export_avd_inventory.py --subscription-id "<subscription-id>" --include-i
 
 - **Desktop Virtualization Reader** (or higher) on the subscription
 - `Microsoft.Authorization/roleAssignments/read`
+- **Reader** on the session-host VMs (or the subscription) so OS name/version can be read from Compute instance view
 - Optional Microsoft Graph: `Directory.Read.All` (or equivalent) so assignment object IDs resolve to names
