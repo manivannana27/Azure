@@ -1,0 +1,6 @@
+azure-identity>=1.19.0
+azure-mgmt-desktopvirtualization>=2.0.0
+azure-mgmt-authorization>=4.0.0
+azure-mgmt-compute>=33.0.0
+openpyxl>=3.1.5
+requests>=2.32.0
