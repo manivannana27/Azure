@@ -220,7 +220,7 @@ def classify_rows(
     seen_vc: set[str] = set()
 
     for row in rows:
-        role = row_get(row, "role", "roles")
+        role = row_get(row, "role")
         server = row_get(row, "servername", "server", "vm", "name", "hostname")
         reboot_val = parse_reboot_value(row_get(row, "reboot"))
 
@@ -360,6 +360,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if not rows:
         print("CSV is empty. Exiting.")
+        return 1
+
+    headers = list(rows[0].keys())
+    if "role" not in headers:
+        print(
+            "CSV is missing the Role column (heading must be Role, not Roles). "
+            f"Found headers: {headers}"
+        )
         return 1
 
     prod_vcenters, reboot_vm_rows = classify_rows(rows, target_reboot=args.reboot)

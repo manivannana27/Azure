@@ -66,7 +66,7 @@ def test_classify_rows_finds_vcenters_and_reboot_12(tmp_path: Path):
     assert [r["servername"] for r in vms] == ["server1", "server2"]
 
 
-def test_classify_pipe_delimited_and_roles_header(tmp_path: Path):
+def test_classify_pipe_delimited_role_header(tmp_path: Path):
     csv_path = tmp_path / "inv.csv"
     csv_path.write_text(
         "ServerName|Role|Site|Environment|Reboot\n"
@@ -78,6 +78,21 @@ def test_classify_pipe_delimited_and_roles_header(tmp_path: Path):
     vcenters, vms = classify_rows(rows)
     assert vcenters == ["vc1"]
     assert vms[0]["servername"] == "uag01"
+
+
+def test_roles_heading_is_not_used_as_role(tmp_path: Path):
+    csv_path = tmp_path / "inv.csv"
+    csv_path.write_text(
+        "ServerName,Roles,Reboot\n"
+        "vc1,Prod-vCenter,\n"
+        "vm1,UAG,12\n",
+        encoding="utf-8",
+    )
+    rows = read_csv_rows(csv_path)
+    assert "role" not in rows[0]
+    vcenters, vms = classify_rows(rows)
+    assert vcenters == []
+    assert [r["servername"] for r in vms] == ["vm1"]
 
 
 def test_vcenter_row_with_reboot_12_is_not_a_guest_target():
