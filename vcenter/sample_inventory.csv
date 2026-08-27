@@ -1,0 +1,7 @@
+ServerName,Role,Site,Environment,Reboot
+vc1.example.com,Prod-vCenter,SiteA,Prod,
+vc2.example.com,DMZ-vCenter,SiteA,Prod,
+vc3.example.com,Prod-vCenter,SiteB,Prod,
+server1,CS,SiteA,Prod,12
+server2,UAG,SiteA,Prod,12
+server3,UAG,SiteA,Prod,12:10
